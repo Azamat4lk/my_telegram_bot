@@ -60,7 +60,7 @@ async def reminder_loop():
                     config.is_waiting_for_entry[user_id] = False
                 # ✅ Отправляем новое напоминание
                 await send_reminder(user_id, now_str, bot)
-        await asyncio.sleep(5)
+        await asyncio.sleep(1)
 
 async def load_all_reminders():
     reminder_settings = load_reminder_settings()

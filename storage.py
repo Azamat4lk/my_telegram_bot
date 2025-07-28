@@ -87,19 +87,16 @@ def save_entry(user_id, entry_text, point_text):
     filepath = get_user_file(user_id)
     now = datetime.now()
     hour = now.hour
-
     if hour < 12:
         time_period = "🕗 Утро"
     elif hour < 18:
         time_period = "🕛 День"
     else:
         time_period = "🌙 Вечер"
-
     # ✅ Создание файла при необходимости
     if not os.path.exists(filepath):
         with open(filepath, "w", encoding="utf-8") as f:
             f.write("📓 Мой Дневник 📓\n")
-
     # 📝 Формирование заголовка и записи
     header = f"\n\n{time_period} — {now.strftime('%Y-%m-%d %H:%M')}\n"
     point_line = f"📍 {point_text.strip()}" if point_text.strip() else ""
