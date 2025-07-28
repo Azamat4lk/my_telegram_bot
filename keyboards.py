@@ -87,7 +87,8 @@ start_kb = ReplyKeyboardMarkup(
         [KeyboardButton(text="🕒 Мои напоминания")] ,
         [KeyboardButton(text="🧩 Изменить пункты предложений")],
         [KeyboardButton(text="📖 Мои пункты")],
-        [KeyboardButton(text="🧠 Примеры")]
+        [KeyboardButton(text="🧠 Примеры")],
+        [KeyboardButton(text="📍 Местоположение")]
     ],
     resize_keyboard=True
 )
@@ -105,6 +106,25 @@ fix_kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🔁 Исправить запись")],
         [KeyboardButton(text="✅ Оставить как есть")]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=True
+)
+
+location_request_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="📍 Отправить геолокацию", request_location=True)],
+        [KeyboardButton(text="❌ Не отправлять")],
+        [KeyboardButton(text="🔙 Вернуться в меню")]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=True
+)
+
+location_choice_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="📍 Отправить геолокацию", request_location=True)],
+        [KeyboardButton(text="❌ Не отправлять")]
     ],
     resize_keyboard=True,
     one_time_keyboard=True

@@ -2,14 +2,17 @@ import logging
 import asyncio
 from datetime import datetime
 import config
+import pytz
 from config import pending_reminders, bot
 from aiogram import Bot
 from keyboards import reminder_kb
 from storage import (load_reminder_settings, save_missed_entry, 
-get_all_reminders, save_reminder_settings)
+get_all_reminders, save_reminder_settings, get_user_timezone)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+import pytz
+from storage import get_user_timezone
 
 scheduler = AsyncIOScheduler()
 user_jobs = {}  # user_id -> list of jobs
@@ -22,31 +25,30 @@ def set_reminder_queue(queue):
 async def send_reminder(user_id: int, run_time_str: str, bot: Bot):
     if config.is_waiting_for_entry.get(user_id, False):
         return
-    # FLAG = False
+
+    user_tz = pytz.timezone(get_user_timezone(user_id))
+    now = datetime.now(user_tz)
+
     config.is_waiting_for_entry[user_id] = True
     pending_reminders[user_id] = {
         "time": run_time_str,
-        "sent_at": datetime.now()
+        "sent_at": now
     }
+
     text = f"⏰ Напоминание {run_time_str}: Пора записать дневник!\n\n"
-    await bot.send_message(
-        user_id,
-        text,
-        reply_markup=reminder_kb(show_examples=True)
-    )
+    await bot.send_message(user_id, text, reply_markup=reminder_kb(show_examples=True))
 
 async def reminder_loop():
-    print("🕓 Сейчас:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     while True:
         user_id, time_str = await reminder_queue.get()
-        now = datetime.now()
+        user_tz = pytz.timezone(get_user_timezone(user_id))
+        now = datetime.now(user_tz)
+
         info = pending_reminders.get(user_id)
 
-        # ⛔ Пропускаем, если уже было в эту минуту
         if info and info.get("time") == time_str:
             continue
 
-        # ❌ Проверка на пропущенное
         if config.is_waiting_for_entry.get(user_id, False):
             if info and "sent_at" in info:
                 sent_at = info["sent_at"]
@@ -59,7 +61,6 @@ async def reminder_loop():
             pending_reminders.pop(user_id, None)
             config.is_waiting_for_entry[user_id] = False
 
-        # ✅ Отправляем новое
         await send_reminder(user_id, time_str, bot)
 
 async def load_all_reminders():
@@ -100,3 +101,12 @@ def restart_reminders_for_user(user_id: int, times: list[str]):
         )
         new_jobs.append(job)
     user_jobs[user_id] = new_jobs
+
+from datetime import datetime
+import pytz
+
+def get_now(user_id: int):
+    tz = config.user_timezones.get(user_id)
+    if tz:
+        return datetime.now(pytz.timezone(tz))
+    return datetime.now()

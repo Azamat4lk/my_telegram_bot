@@ -7,7 +7,7 @@ from handlers import router as main_router
 from scheduler import scheduler, load_all_reminders, start_scheduler, reminder_loop, set_reminder_queue
 from config import bot
 
-# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 dp = Dispatcher(storage=MemoryStorage())
 

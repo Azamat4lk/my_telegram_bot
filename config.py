@@ -8,6 +8,7 @@ load_dotenv()
 
 is_waiting_for_entry = {}
 pending_reminders = {}
+user_timezones = {}
 
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:

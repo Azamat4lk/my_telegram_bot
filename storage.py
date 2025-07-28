@@ -6,6 +6,7 @@ import json
 POINTS_FILE = "points.json"
 DATA_FOLDER = "user_data"
 REMINDERS_FILE = "reminders.json"
+TIMEZONE_FILE = "user_timezones.json"
 HIDDEN_MARKER = "\u2063"  # невидимый символ
 os.makedirs(DATA_FOLDER, exist_ok=True)
 
@@ -59,14 +60,9 @@ def get_or_create_user_points(user_id: int) -> list:
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
     else:
-        # Стандартные значения, если пользователь новый
-        default_points = [
-            "1. Не вредить здоровью своему и других. Сохранять жизнь", 
-            "2. Не воровать; уважать чужую собственность", 
-            "3. Не прелюбодействовать. Уважать чужие отношения; уважать другие национальности и культуры", 
-            "4. Не врать. Говорить правду", 
-            "5. Не разделять людей речью. Сближающая речь",
-        ]
+        # Если индивидуального файла нет — читаем общие пункты из points.json
+        with open("points.json", "r", encoding="utf-8") as f:
+            default_points = json.load(f)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(default_points, f, ensure_ascii=False, indent=2)
         return default_points
@@ -149,4 +145,29 @@ def get_all_reminders():
 def save_user_data(user_id: int, data: dict):
     path = os.path.join(DATA_FOLDER, f"{user_id}.json")
     with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def get_user_timezone(user_id: int) -> str:
+    """
+    Возвращает строку временной зоны (например, 'Asia/Tashkent') для пользователя.
+    Если не задана — возвращает значение по умолчанию.
+    """
+    if os.path.exists(TIMEZONE_FILE):
+        with open(TIMEZONE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get(str(user_id), "Asia/Tashkent")  # по умолчанию
+
+    return "Asia/Tashkent"
+
+def set_user_timezone(user_id: int, tz: str):
+    """
+    Сохраняет временную зону пользователя.
+    """
+    if os.path.exists(TIMEZONE_FILE):
+        with open(TIMEZONE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {}
+    data[str(user_id)] = tz
+    with open(TIMEZONE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

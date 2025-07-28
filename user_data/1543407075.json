@@ -18,5 +18,7 @@
       "Нсостс",
       "Нство"
     ]
-  }
+  },
+  "timezone": "Asia/Yekaterinburg",
+  "timezone_selected": true
 }

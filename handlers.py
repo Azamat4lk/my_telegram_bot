@@ -1,31 +1,40 @@
-from scheduler import restart_reminders_for_user, user_jobs, scheduler # импортируем функцию
+from scheduler import (restart_reminders_for_user, user_jobs, 
+scheduler, get_now) # импортируем функцию
 from datetime import datetime, timedelta
 from aiogram import types, F, Router
 from aiogram.filters import Command, StateFilter
-from aiogram.types import (Message, FSInputFile,
+from aiogram.types import (Message, FSInputFile, 
 Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery)
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import config
 from config import pending_reminders, bot
 from keyboards import (reminder_kb, remove_kb, start_kb, 
-fix_kb, get_point_keyboard, points_options_kb, 
-reminder_count_kb, get_example_button, examples, 
-ReplyKeyboardRemove, examples_menu_kb, 
+fix_kb, get_point_keyboard, points_options_kb, location_choice_kb,
+reminder_count_kb, get_example_button, examples,
+ReplyKeyboardRemove, examples_menu_kb, location_request_kb,
 examples_section_kb, examples_edit_kb, examples as default_examples)
 from storage import (save_entry, 
-get_user_file, save_reminder_settings, 
+get_user_file, save_reminder_settings,
 clear_user_diary_with_backup, delete_last_entry, save_points, 
 load_reminder_settings, get_or_create_user_points,
 save_missed_entry, get_user_data, save_user_data, HIDDEN_MARKER)
+from timezonefinder import TimezoneFinder
 from functools import wraps
 import logging
+import pytz
 import os
 import re
 
 router = Router()
 user_indexes = {} 
+tf = TimezoneFinder()
 
+##Отправить стикеры в боте и скопировать ссылку
+from aiogram.enums import ContentType
+@router.message(F.content_type == ContentType.STICKER)
+async def get_sticker_id(message: Message):
+    await message.answer(f"📦 Вот file_id стикера:\n\n<code>{message.sticker.file_id}</code>", parse_mode="HTML")
 
 QUESTIONS = [
     "➕ Что за неделю было хорошего?",
@@ -67,6 +76,7 @@ SECTION_MAP = {
 
 # FSM-состояния
 class ReminderStates(StatesGroup):
+    choosing_timezone = State()
     choosing_count = State()
     typing_times = State()
 class PointsSettings(StatesGroup):
@@ -86,6 +96,7 @@ user_states = {}
 @router.message(F.text == "🔁 Исправить запись")
 async def fix_last_entry(message: Message):
     user_id = message.from_user.id
+    now = get_now(user_id)
     config.is_waiting_for_entry[user_id] = True
     pending_reminders[user_id] = datetime.now().strftime("%H:%M")
     delete_last_entry(user_id)
@@ -114,6 +125,7 @@ async def keep_entry(message: Message):
 @router.message(F.text == "📝 Буду записывать")
 async def record_entry(message: Message):
     user_id = message.from_user.id
+    now = get_now(user_id)
     config.is_waiting_for_entry[user_id] = True
     pending_reminders[user_id] = datetime.now().strftime("%H:%M")
     user_points = get_or_create_user_points(user_id)
@@ -196,8 +208,6 @@ def block_during_entry(handler):
     return wrapper
 """
 
-# 
-# 
 @router.message(F.text == "🧠 Примеры")
 #@block_during_entry
 async def examples_menu(msg: types.Message, state: FSMContext):
@@ -315,9 +325,6 @@ async def collect_example(msg: types.Message, state: FSMContext):
 async def go_back(msg: types.Message, state: FSMContext):
     await state.clear()
     await examples_menu(msg, state)
-# 
-# 
-# 
 
 @router.message(F.text == "🔙 Вернуться в меню")
 #@block_during_entry
@@ -328,6 +335,7 @@ async def back_from_count(message: Message, state: FSMContext):
 @router.message(F.text == "⚙ Изменить напоминания")
 #@block_during_entry
 async def start_reminder_change(message: Message, state: FSMContext):
+    # если timezone уже есть — продолжаем менять напоминания
     await message.answer("Сколько раз в день вы хотите получать напоминания?", reply_markup=reminder_count_kb)
     await state.set_state(ReminderStates.choosing_count)
 
@@ -343,6 +351,60 @@ async def turn_off_reminders(message: Message, state: FSMContext):
     await message.answer("🔕 Все напоминания отключены. Вы всегда можете включить их снова через '⏰ Изменить напоминания'.", reply_markup=start_kb)
     await state.clear()
 
+@router.message(F.text == "📍 Местоположение")
+async def ask_for_location(message: Message):
+    await message.answer(
+        "Пожалуйста, отправьте своё местоположение, чтобы установить часовой пояс.",
+        reply_markup=location_request_kb
+    )
+
+@router.message(F.text == "❌ Не отправлять")
+async def skip_location(message: Message):
+    user_id = message.from_user.id
+    user_data = get_user_data(user_id)
+    user_data["timezone"] = "Asia/Yekaterinburg"
+    if not user_data.get("timezone_selected"):
+        user_data["timezone"] = True
+        await message.answer("⚠ Пожалуйста, завновонапишите /start для начала.")  # по умолчанию
+    save_user_data(user_id, user_data)
+    await message.answer(
+        "✅ Используем серверное время (Екатеринбург, UTC+5).",
+        reply_markup=start_kb
+    )
+
+@router.message(F.location)
+async def handle_location(message: Message):
+    location = message.location
+    if location is None:
+        await message.answer("❗ Не удалось получить местоположение. Пожалуйста, используйте кнопку для отправки геолокации.")
+        return
+    latitude = location.latitude
+    longitude = location.longitude
+    from timezonefinder import TimezoneFinder
+    import pytz
+    from datetime import datetime
+    tf = TimezoneFinder()
+    tz_name = tf.timezone_at(lat=latitude, lng=longitude)
+    if tz_name is None:
+        tz_name = "Asia/Yekaterinburg"
+        await message.answer("❗ Не удалось определить часовой пояс, используем Екатеринбург по умолчанию.", reply_markup=start_kb)
+    tz = pytz.timezone(tz_name)
+    local_time = datetime.now(tz).strftime("%H:%M")
+    user_id = message.from_user.id
+    user_data = get_user_data(user_id)
+    user_data["timezone"] = tz_name
+    if not user_data.get("timezone_selected"):
+        user_data["timezone"] = "Asia/Yekaterinburg"
+        await message.answer("⚠ Пожалуйста, завновонапишите /start для начала.")
+    save_user_data(user_id, user_data)
+    await message.answer_sticker("CAACAgIAAxkBAAIiO2iHqvS4k_W6khAOhhWbgiL-HHS1AAL-AANWnb0K2gRhMC751_82BA")
+    await message.answer(
+        f"✅ Часовой пояс сохранён: *{tz_name}*\n"
+        f"🕒 Местное время: *{local_time}*\n\n"
+        "Теперь напоминания будут приходить по местному времени.",
+        parse_mode="Markdown",
+        reply_markup=start_kb
+    )
 
 @router.message(ReminderStates.choosing_count)
 #@block_during_entry
@@ -409,7 +471,6 @@ async def show_points(message: Message):
         return
     text = "<b>📖 Твои текущие пункты:</b>\n\n" + "\n".join(user_points)
     await message.answer(text)
-
 
 @router.message(F.text == "📄 Отправить дневник")
 #@block_during_entry
@@ -506,12 +567,26 @@ async def process_message(message: Message):
     await ask_next_point(user_id)
 
 @router.message(Command("start"))
-#@block_during_entry
 async def cmd_start(message: Message):
     user_id = message.from_user.id
+    user_data = get_user_data(user_id)
     get_or_create_user_points(user_id)
+
+    # 👇 Показываем выбор только 1 раз
+    if not user_data.get("timezone_selected"):
+        await message.answer_sticker("CAACAgIAAxkBAAIiwWiHwfHnzDHoKjSKpBNN9vQ5VmeHAAJUAANBtVYMarf4xwiNAfo2BA")
+        await message.answer(
+            "👋 Привет! Чтобы бот присылал напоминания по вашему времени, выберите один из вариантов:\n\n"
+            "📍 *Отправить местоположение* — чтобы определить ваш часовой пояс\n"
+            "❌ *Не отправлять* — тогда будет использоваться время сервера (UTC+5 — Екатеринбург)",
+            reply_markup=location_choice_kb,
+            parse_mode="Markdown"
+        )
+        return
+
+    # Основное меню — только если пользователь уже выбрал
     await message.answer(
-        f"👋 Привет, {message.chat.first_name}! Я твой бот-дневник.\n\n"
+        f"👋 Добро пожаловать, {message.chat.first_name}! Я твой бот-дневник.\n\n"
         "Каждый день я буду напоминать тебе 3 раза:\n"
         "➕ Что хорошего произошло\n"
         "➖ Что было не так\n"
@@ -520,11 +595,11 @@ async def cmd_start(message: Message):
         reply_markup=start_kb
     )
     await message.answer(
-    "💡 Команды:\n"
-    "/help - Посмотр команды бота\n"
-    "/clear — Очистить дневник\n"
-    "Или используй кнопки ниже 👇"
-)
+        "💡 Команды:\n"
+        "/help - Посмотр команды бота\n"
+        "/clear — Очистить дневник\n"
+        "Или используй кнопки ниже 👇"
+    )
 
 @router.message(Command("help"))
 #@block_during_entry
@@ -533,6 +608,7 @@ async def help_command(message: Message):
         "📋 <b>Доступные команды</b>:\n"
         "/start — начать заново\n"
         "/clear — очистить дневник\n"
+        "/mytime — посмотреть ваше время и часовой пояс.\n"
         "/search — поиск редактирование записей дневника\n\n"
         "Также доступны кнопки:\n"
         "📝 Буду записывать — начать запись\n"
@@ -551,6 +627,29 @@ async def clear_diary(message: Message):
     filepath = get_user_file(user_id)
     document = FSInputFile(filepath)
     await message.answer_document(document=document, reply_markup=start_kb, caption="🧹 Ваш дневник очищен. Новый файл создан.")
+    user_id = message.from_user.id
+    user_data = get_user_data(user_id)
+
+@router.message(Command("mytime"))
+async def show_user_time(message: Message):
+    user_id = message.from_user.id
+    user_data = get_user_data(user_id)
+    timezone_str = user_data.get("timezone", "UTC")
+    try:
+        tz = pytz.timezone(timezone_str)
+    except Exception:
+        tz = pytz.UTC
+        timezone_str = "UTC"
+
+    now = datetime.now(tz)
+    offset_hours = now.utcoffset().total_seconds() / 3600 if now.utcoffset() else 0
+    await message.answer(
+        f"🕰 Ваше текущее время: <b>{now.strftime('%H:%M')}</b>\n"
+        f"📆 Сегодня: <b>{now.strftime('%d.%m.%Y')}</b>\n\n"
+        f"🌍 Часовой пояс: <b>{timezone_str}</b>\n"
+        f"🌍 Смещение часового пояса: UTC{'+' if offset_hours >= 0 else ''}{int(offset_hours)}",
+        parse_mode="HTML"
+    )
 
 # edit_diary.py
 DIARY_FOLDER = "diaries"
