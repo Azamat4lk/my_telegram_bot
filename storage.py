@@ -98,7 +98,7 @@ def save_entry(user_id, entry_text, point_text):
     # ✅ Создание файла при необходимости
     if not os.path.exists(filepath):
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write("Мой дневник\n\n")
+            f.write("📓 Мой Дневник 📓\n")
 
     # 📝 Формирование заголовка и записи
     header = f"\n\n{time_period} — {now.strftime('%Y-%m-%d %H:%M')}\n"

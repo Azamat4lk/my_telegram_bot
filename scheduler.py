@@ -1,5 +1,3 @@
-# ✅ ОБНОВЛЁННЫЙ scheduler.py с поддержкой пользовательского интервала и проверкой пересечений
-
 import logging
 import asyncio
 from datetime import datetime

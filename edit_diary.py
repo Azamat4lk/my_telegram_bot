@@ -50,7 +50,7 @@ async def keep_entry(message: Message):
     config.is_waiting_for_entry[user_id] = False
     await message.answer("📔 Запись сохранена. Спасибо!")
     await message.answer("Отлично, теперь будут следующие напоминания 📌")
-    await message.answer("🔎 Введите дату (например, 2025-07-24) или ключевое слово для поиска \nЗавершить - /cancel:", reply_markup=ReplyKeyboardRemove())
+    await message.answer("🔎 Введите дату (например, 2025-07-24) или ключевое слово для поиска \nЗавершить - /cancel:", reply_markup=start_kb)
 
 @router.message(F.text == "📝 Буду записывать")
 async def record_entry(message: Message):
@@ -81,7 +81,7 @@ async def refuse(message: Message):
     # Можно также логировать отказ
     save_missed_entry(user_id, "отказ")
     await message.answer("Хорошо, напоминание отменено. 📭")
-    await message.answer("🔎 Введите дату (например, 2025-07-24) или ключевое слово для поиска \nЗавершить - /cancel:", reply_markup=ReplyKeyboardRemove())
+    await message.answer("🔎 Введите дату (например, 2025-07-24) или ключевое слово для поиска \nЗавершить - /cancel:", reply_markup=start_kb)
 
 @router.message(lambda message: config.is_waiting_for_entry.get(message.from_user.id, False))
 async def process_message(message: Message):
@@ -126,47 +126,47 @@ def save_diary(user_id: int, records: list[str]):
     with open(filename, "w", encoding="utf-8") as f:
         f.write("\n\n".join(records))
 
+@router.message(Command("cancel"), StateFilter("*"))
+@block_during_entry
+async def cancel_command(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Действие отменено.", reply_markup=start_kb)
+
 @router.message(EditDiaryStates.waiting_for_search_query)
 @block_during_entry
 async def process_search_query(message: Message, state: FSMContext):
     user_id = str(message.from_user.id)
     query = message.text.strip().lower()
     diary = load_diary(user_id)
-
     if not diary:
         await message.answer("📭 Ваш дневник пока пуст.")
         await state.clear()
         return
-
     skip_words = ["пропуск", "пропущено", "отложено", "отложить"]
     filtered_entries = []
     for idx, entry in enumerate(diary):
         entry_lower = entry.lower()
         if any(word in entry_lower for word in skip_words):
             continue
+        if "📓 мой дневник 📓" in entry_lower:
+            continue  # ❌ Пропускаем такие записи
         if query in entry_lower:
             filtered_entries.append((idx, entry))
-
     if not filtered_entries:
         await message.answer("❌ Не найдено записей по вашему запросу.")
         return
-
     await state.update_data(found_records=filtered_entries)
-
     text = "✅ Найдено записей:\n\n"
     for i, (_, record) in enumerate(filtered_entries, start=1):
         lines = record.strip().splitlines()
-        point = next((line for line in lines if line.startswith("📍")), "")
+        points = [line for line in lines if line.startswith("📍")]
         header = lines[0] if lines else "..."
         plus = next((line for line in lines if line.startswith("➕")), "")
         minus = next((line for line in lines if line.startswith("➖")), "")
         todo = next((line for line in lines if line.startswith("📌")), "")
-        
         parts = [header]
-        if point and point != header:
-            parts.append(point)
+        parts.extend(points)
         parts.extend([plus, minus, todo])
-        
         text += f"{i})\n" + "\n".join([p for p in parts if p]) + "\n\n"
     await message.answer(text.strip())
     await message.answer("Введите номер записи, которую хотите изменить:")
@@ -177,7 +177,6 @@ async def process_search_query(message: Message, state: FSMContext):
 async def process_record_number(message: Message, state: FSMContext):
     data = await state.get_data()
     found = data.get("found_records", [])
-
     try:
         num = int(message.text.strip())
         if not (1 <= num <= len(found)):
@@ -185,10 +184,8 @@ async def process_record_number(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❗ Введите корректный номер из списка\nЗавершить - /cancel.")
         return
-
     selected_idx, selected_record = found[num - 1]
     await state.update_data(selected_idx=selected_idx)
-
     buttons = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Плюс", callback_data="edit_plus")],
         [InlineKeyboardButton(text="➖ Минус", callback_data="edit_minus")],
@@ -207,18 +204,15 @@ async def process_edit_choice(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.answer()
         return
-
     part_map = {
         "edit_plus": ("➕", 1),
         "edit_minus": ("➖", 2),
         "edit_todo": ("📌", 3)
     }
-
     symbol, line_idx = part_map.get(choice, (None, None))
     if symbol is None:
         await callback.answer("🚫 Неизвестный выбор.")
         return
-
     await state.update_data(edit_symbol=symbol, line_idx=line_idx)
     await callback.message.answer(f"✏ Введите новый текст для пункта {symbol}:")
     await state.set_state(EditDiaryStates.waiting_for_new_text)
@@ -232,35 +226,29 @@ async def process_new_text(message: Message, state: FSMContext):
     selected_idx = data.get("selected_idx")
     edit_symbol = data.get("edit_symbol")
     new_text = message.text.strip()
-
     if selected_idx is None or edit_symbol is None:
         await message.answer("⚠ Ошибка состояния. Попробуйте сначала.\nЗавершить - /cancel")
         await state.clear()
         return
-
     if not new_text:
         await message.answer("❗ Текст не может быть пустым. Введите новый текст:\nЗавершить - /cancel")
         return
-
     diary = load_diary(user_id)
     if selected_idx >= len(diary):
         await message.answer("⚠ Запись не найдена. Попробуйте сначала.\nЗавершить - /cancel")
         await state.clear()
         return
-
     lines = diary[selected_idx].splitlines()
     prefix_map = {
         "➕": "➕",
         "➖": "➖",
         "📌": "📌"
     }
-
     prefix = prefix_map.get(edit_symbol)
     if not prefix:
         await message.answer("⚠ Не удалось определить, что нужно изменить.\nЗавершить - /cancel")
         await state.clear()
         return
-
     # Заменяем строку с нужным символом
     updated = False
     for i, line in enumerate(lines):
@@ -268,15 +256,12 @@ async def process_new_text(message: Message, state: FSMContext):
             lines[i] = f"{prefix} {new_text}"
             updated = True
             break
-
     if not updated:
         await message.answer("⚠ Не удалось найти нужный элемент для редактирования.\nЗавершить - /cancel")
         await state.clear()
         return
-
     diary[selected_idx] = "\n".join(lines)
     save_diary(user_id, diary)
-
     await message.answer(f"✅ Запись обновлена:\n\n{diary[selected_idx]}")
         # Предлагаем продолжить редактирование или завершить
     buttons = InlineKeyboardMarkup(inline_keyboard=[
@@ -322,12 +307,6 @@ async def ask_next_point(user_id: int):
     question = QUESTIONS[step]
     markup = get_example_button(str(step))  # ✅ Показываем кнопку всегда
     await bot.send_message(user_id, question, reply_markup=markup)
-
-@router.message(Command("cancel"), StateFilter("*"))
-@block_during_entry
-async def cancel_command(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("❌ Действие отменено.", reply_markup=start_kb)
 
 @router.message(Command("search"))
 @block_during_entry
