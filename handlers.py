@@ -1,8 +1,9 @@
-from scheduler import restart_reminders_for_user, user_jobs # импортируем функцию
+from scheduler import restart_reminders_for_user, user_jobs, scheduler # импортируем функцию
 from datetime import datetime, timedelta
 from aiogram import types, F, Router
-from aiogram.filters import Command
-from aiogram.types import Message, FSInputFile
+from aiogram.filters import Command, StateFilter
+from aiogram.types import (Message, FSInputFile,
+Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery)
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import config
@@ -16,7 +17,7 @@ from storage import (save_entry,
 get_user_file, save_reminder_settings, 
 clear_user_diary_with_backup, delete_last_entry, save_points, 
 load_reminder_settings, get_or_create_user_points,
-save_missed_entry, get_user_data, save_user_data)
+save_missed_entry, get_user_data, save_user_data, HIDDEN_MARKER)
 from functools import wraps
 import logging
 import os
@@ -181,6 +182,7 @@ async def ask_next_point(user_id: int):
     markup = get_example_button(str(step))  # ✅ Показываем кнопку всегда
     await bot.send_message(user_id, question, reply_markup=markup)
 
+"""
 def block_during_entry(handler):
     @wraps(handler)
     async def wrapper(message: Message, *args, **kwargs):
@@ -192,17 +194,18 @@ def block_during_entry(handler):
         logging.info(f"[ALLOWED] Пользователь {user_id} использует команду.")
         return await handler(message, *args, **kwargs)
     return wrapper
+"""
 
 # 
 # 
 @router.message(F.text == "🧠 Примеры")
-@block_during_entry
+#@block_during_entry
 async def examples_menu(msg: types.Message, state: FSMContext):
     await msg.answer("✏ Что вы хотите сделать с примерами?", reply_markup=examples_menu_kb)
     await state.set_state(ExampleStates.choosing_action)
 
 @router.message(F.text == "📋 Мои примеры")
-@block_during_entry
+#@block_during_entry
 async def show_user_examples(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     user_data = get_user_data(user_id)
@@ -221,26 +224,26 @@ async def show_user_examples(msg: types.Message, state: FSMContext):
     await msg.answer(result.strip(), reply_markup=examples_menu_kb, parse_mode="HTML")
 
 @router.message(ExampleStates.choosing_action, F.text == "✏ Изменить примеры")
-@block_during_entry
+#@block_during_entry
 async def choose_section_to_edit(msg: types.Message, state: FSMContext):
     await msg.answer("Выберите, к какому разделу хотите изменить примеры:", reply_markup=examples_section_kb)
     await state.set_state(ExampleStates.choosing_section)
 
 @router.message(ExampleStates.choosing_section, F.text.in_(SECTION_MAP.keys()))
-@block_during_entry
+#@block_during_entry
 async def choose_edit_action(msg: types.Message, state: FSMContext):
     await state.update_data(section=SECTION_MAP[msg.text])
     await msg.answer(f"Что вы хотите сделать с примерами для раздела {msg.text}?", reply_markup=examples_edit_kb)
     await state.set_state(ExampleStates.choosing_edit)
 
 @router.message(ExampleStates.choosing_edit, F.text == "➕ Добавить пример")
-@block_during_entry
+#@block_during_entry
 async def start_adding_example(msg: types.Message, state: FSMContext):
     await msg.answer("✍ Напишите новый пример для добавления:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(ExampleStates.adding_example)
 
 @router.message(ExampleStates.adding_example)
-@block_during_entry
+#@block_during_entry
 async def save_added_example(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     user_data = get_user_data(user_id)
@@ -270,7 +273,7 @@ async def save_added_example(msg: types.Message, state: FSMContext):
     await state.set_state(ExampleStates.choosing_action)
 
 @router.message(ExampleStates.choosing_edit, F.text == "♻ Заменить примеры")
-@block_during_entry
+#@block_during_entry
 async def start_replacing_examples(msg: types.Message, state: FSMContext):
     await msg.answer(
         "🗑 Все старые примеры будут удалены.\n"
@@ -279,7 +282,7 @@ async def start_replacing_examples(msg: types.Message, state: FSMContext):
     await state.set_state(ExampleStates.replacing_examples)
 
 @router.message(ExampleStates.replacing_examples, F.text.casefold() == "готово")
-@block_during_entry
+#@block_during_entry
 async def finish_replacing(msg: types.Message, state: FSMContext):
     user_data = get_user_data(msg.from_user.id)
     data = await state.get_data()
@@ -295,7 +298,7 @@ async def finish_replacing(msg: types.Message, state: FSMContext):
     await state.set_state(ExampleStates.choosing_action)
 
 @router.message(ExampleStates.replacing_examples)
-@block_during_entry
+#@block_during_entry
 async def collect_example(msg: types.Message, state: FSMContext):
     text = msg.text.strip()
     if not text:
@@ -308,7 +311,7 @@ async def collect_example(msg: types.Message, state: FSMContext):
     await state.update_data(new_examples=new_examples)
 
 @router.message(F.text == "🔙 Назад")
-@block_during_entry
+#@block_during_entry
 async def go_back(msg: types.Message, state: FSMContext):
     await state.clear()
     await examples_menu(msg, state)
@@ -317,19 +320,19 @@ async def go_back(msg: types.Message, state: FSMContext):
 # 
 
 @router.message(F.text == "🔙 Вернуться в меню")
-@block_during_entry
+#@block_during_entry
 async def back_from_count(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Вы вернулись в главное меню 👇", reply_markup=start_kb)
 
 @router.message(F.text == "⚙ Изменить напоминания")
-@block_during_entry
+#@block_during_entry
 async def start_reminder_change(message: Message, state: FSMContext):
     await message.answer("Сколько раз в день вы хотите получать напоминания?", reply_markup=reminder_count_kb)
     await state.set_state(ReminderStates.choosing_count)
 
 @router.message(ReminderStates.choosing_count, F.text == "🔕 Выключить напоминания")
-@block_during_entry
+#@block_during_entry
 async def turn_off_reminders(message: Message, state: FSMContext):
     user_id = message.from_user.id
     jobs = user_jobs.get(user_id, [])
@@ -342,7 +345,7 @@ async def turn_off_reminders(message: Message, state: FSMContext):
 
 
 @router.message(ReminderStates.choosing_count)
-@block_during_entry
+#@block_during_entry
 async def get_reminder_count(message: Message, state: FSMContext):
     match = re.match(r"(\d+) раз", message.text)
     if not match:
@@ -354,7 +357,7 @@ async def get_reminder_count(message: Message, state: FSMContext):
     await message.answer(f"Введите {count} времени в формате 08:00, 14:00, 20:00:")
 
 @router.message(ReminderStates.typing_times)
-@block_during_entry
+#@block_during_entry
 async def get_reminder_times(message: Message, state: FSMContext):
     data = await state.get_data()
     count = data.get("count")
@@ -385,7 +388,7 @@ async def get_reminder_times(message: Message, state: FSMContext):
     await state.clear()
 
 @router.message(F.text == "🕒 Мои напоминания")
-@block_during_entry
+#@block_during_entry
 async def show_my_reminders(message: Message):
     user_id = str(message.from_user.id)
     settings = load_reminder_settings()
@@ -397,7 +400,7 @@ async def show_my_reminders(message: Message):
         await message.answer(f"📅 Ваши текущие напоминания:\n{formatted}")
         
 @router.message(F.text == "📖 Мои пункты")
-@block_during_entry
+#@block_during_entry
 async def show_points(message: Message):
     user_id = message.from_user.id
     user_points = get_or_create_user_points(user_id)
@@ -409,7 +412,7 @@ async def show_points(message: Message):
 
 
 @router.message(F.text == "📄 Отправить дневник")
-@block_during_entry
+#@block_during_entry
 async def send_diary_file(message: Message):
     user_id = message.from_user.id
     file_path = get_user_file(user_id)
@@ -421,7 +424,7 @@ async def send_diary_file(message: Message):
 
 
 @router.message(F.text == "🧩 Изменить пункты предложений")
-@block_during_entry
+#@block_during_entry
 async def change_points(message: Message, state: FSMContext):
     await state.set_state(PointsSettings.choosing_action)
     await message.answer(
@@ -430,7 +433,7 @@ async def change_points(message: Message, state: FSMContext):
     )
 
 @router.message(PointsSettings.choosing_action)
-@block_during_entry
+#@block_during_entry
 async def process_points_action(message: Message, state: FSMContext):
     text = message.text.strip()
     if text == "✏ Изменить все пункты":
@@ -453,12 +456,12 @@ async def process_points_action(message: Message, state: FSMContext):
         await message.answer("Пожалуйста, выберите вариант с кнопки.")
 
 @router.message(F.text == "ℹ О боте")
-@block_during_entry
+#@block_during_entry
 async def shpw_about_info(message: Message):
     await message.answer(info_text)
 
 @router.message(PointsSettings.editing_points)
-@block_during_entry
+#@block_during_entry
 async def save_new_points(message: Message, state: FSMContext):
     user_id = message.from_user.id
     text = message.text.strip()
@@ -474,7 +477,7 @@ async def save_new_points(message: Message, state: FSMContext):
     await state.clear()
 
 @router.message(PointsSettings.adding_points)
-@block_during_entry
+#@block_during_entry
 async def add_more_points(message: Message, state: FSMContext):
     user_id = message.from_user.id
     text = message.text.strip()
@@ -493,7 +496,7 @@ async def process_message(message: Message):
     user_id = message.from_user.id
     state = user_states.get(user_id)
     if not state:
-        await message.answer("Пожалуйста, напишите /start, чтобы начать.")
+        await message.answer("Пожалуйста, выбирайте кнопки 🔽")
         return
     step = state.get('step', 0)
     answers = state.get('answers', [])
@@ -503,7 +506,7 @@ async def process_message(message: Message):
     await ask_next_point(user_id)
 
 @router.message(Command("start"))
-@block_during_entry
+#@block_during_entry
 async def cmd_start(message: Message):
     user_id = message.from_user.id
     get_or_create_user_points(user_id)
@@ -524,7 +527,7 @@ async def cmd_start(message: Message):
 )
 
 @router.message(Command("help"))
-@block_during_entry
+#@block_during_entry
 async def help_command(message: Message):
     await message.answer(
         "📋 <b>Доступные команды</b>:\n"
@@ -536,17 +539,244 @@ async def help_command(message: Message):
         "🔁 Исправить запись — удалить и переписать последнюю\n"
         "⚙ Изменить напоминания — настроить время и частоту\n"
         "🧩 Изменить пункты — изменить или добавить правила\n"
-        "ℹ О боте — подробнее о работе\n"
+        "ℹ О боте — подробнее о работе\n", 
+        reply_markup=start_kb
     )
 
 @router.message(Command("clear"))
-@block_during_entry
+#@block_during_entry
 async def clear_diary(message: Message):
     user_id = message.chat.id
     clear_user_diary_with_backup(user_id)
     filepath = get_user_file(user_id)
     document = FSInputFile(filepath)
     await message.answer_document(document=document, reply_markup=start_kb, caption="🧹 Ваш дневник очищен. Новый файл создан.")
+
+# edit_diary.py
+DIARY_FOLDER = "diaries"
+
+QUESTIONS = [
+    "➕ Что за неделю было хорошего?",
+    "➖ Что за неделю не очень?",
+    "📌 Что нужно сделать?"
+]
+
+if not os.path.exists(DIARY_FOLDER):
+    os.makedirs(DIARY_FOLDER)
+
+class EditDiaryStates(StatesGroup):
+    waiting_for_search_query = State()
+    waiting_for_record_number = State()
+    waiting_for_edit_choice = State()
+    waiting_for_new_text = State()
+    waiting_for_continue_or_finish = State()
+
+def get_user_file(user_id: int) -> str:
+    return os.path.join(DIARY_FOLDER, f"{user_id}.txt")
+
+def load_diary(user_id: int) -> list[str]:
+    filepath = get_user_file(user_id)
+    if not os.path.exists(filepath):
+        return []
+    with open(filepath, "r", encoding="utf-8") as f:
+        content = f.read()
+        entries = [e.strip() for e in content.strip().split("\n\n") if e.strip()]
+        if entries and entries[0].startswith("Мой дневник"):
+            entries.pop(0)
+        return entries
+
+def save_diary(user_id: int, records: list[str]):
+    filename = get_user_file(user_id)
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("\n\n".join(records))
+
+@router.message(Command("cancel"), StateFilter("*"))
+#@block_during_entry
+async def cancel_command(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Действие отменено.", reply_markup=start_kb)
+
+@router.message(EditDiaryStates.waiting_for_search_query)
+#@block_during_entry
+async def process_search_query(message: Message, state: FSMContext):
+    user_id = str(message.from_user.id)
+    query = message.text.strip().lower()
+    diary = load_diary(user_id)
+    if not diary:
+        await message.answer("📭 Ваш дневник пока пуст.")
+        await state.clear()
+        return
+    skip_words = [f"{HIDDEN_MARKER}пропуск"]
+    filtered_entries = []
+    for idx, entry in enumerate(diary):
+        entry_lower = entry.lower()
+        if any(word in entry_lower for word in skip_words):
+            continue
+        if f"{HIDDEN_MARKER}📓 мой дневник 📓" in entry_lower:
+            continue  # ❌ Пропускаем такие записи
+        if query in entry_lower:
+            filtered_entries.append((idx, entry))
+    if not filtered_entries:
+        await message.answer("❌ Не найдено записей по вашему запросу.")
+        return
+    await state.update_data(found_records=filtered_entries)
+    text = "✅ Найдено записей:\n\n"
+    for i, (_, record) in enumerate(filtered_entries, start=1):
+        lines = record.strip().splitlines()
+        points = [line for line in lines if line.startswith("📍")]
+        header = lines[0] if lines else "..."
+        plus = next((line for line in lines if line.startswith("➕")), "")
+        minus = next((line for line in lines if line.startswith("➖")), "")
+        todo = next((line for line in lines if line.startswith("📌")), "")
+        parts = [header]
+        parts.extend(points)
+        parts.extend([plus, minus, todo])
+        text += f"Номер: {i}\n" + "\n".join([p for p in parts if p]) + "\n\n"
+    await message.answer(text.strip())
+    await message.answer("Введите номер записи, которую хотите изменить:")
+    await state.set_state(EditDiaryStates.waiting_for_record_number)
+
+@router.message(EditDiaryStates.waiting_for_record_number)
+#@block_during_entry
+async def process_record_number(message: Message, state: FSMContext):
+    data = await state.get_data()
+    found = data.get("found_records", [])
+    try:
+        num = int(message.text.strip())
+        if not (1 <= num <= len(found)):
+            raise ValueError
+    except ValueError:
+        await message.answer("❗ Введите корректный номер из списка\nЗавершить - /cancel.")
+        return
+    selected_idx, selected_record = found[num - 1]
+    await state.update_data(selected_idx=selected_idx)
+    buttons = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Плюс", callback_data="edit_plus")],
+        [InlineKeyboardButton(text="➖ Минус", callback_data="edit_minus")],
+        [InlineKeyboardButton(text="📌 Сделать", callback_data="edit_todo")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="edit_cancel")]
+    ])
+    await message.answer(f"📝 Выбрана запись:\n\n{selected_record}\n\nЧто вы хотите изменить?", reply_markup=buttons)
+    await state.set_state(EditDiaryStates.waiting_for_edit_choice)
+
+@router.callback_query(F.data.in_({"edit_plus", "edit_minus", "edit_todo", "edit_cancel"}))
+#@block_during_entry
+async def process_edit_choice(callback: CallbackQuery, state: FSMContext):
+    choice = callback.data
+    if choice == "edit_cancel":
+        await callback.message.answer("❌ Редактирование отменено.", reply_markup=start_kb)
+        await state.clear()
+        await callback.answer()
+        return
+    part_map = {
+        "edit_plus": ("➕", 1),
+        "edit_minus": ("➖", 2),
+        "edit_todo": ("📌", 3)
+    }
+    symbol, line_idx = part_map.get(choice, (None, None))
+    if symbol is None:
+        await callback.answer("🚫 Неизвестный выбор.")
+        return
+    await state.update_data(edit_symbol=symbol, line_idx=line_idx)
+    await callback.message.answer(f"✏ Введите новый текст для пункта {symbol}:")
+    await state.set_state(EditDiaryStates.waiting_for_new_text)
+    await callback.answer()
+
+@router.message(EditDiaryStates.waiting_for_new_text)
+#@block_during_entry
+async def process_new_text(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    data = await state.get_data()
+    selected_idx = data.get("selected_idx")
+    edit_symbol = data.get("edit_symbol")
+    new_text = message.text.strip()
+    if selected_idx is None or edit_symbol is None:
+        await message.answer("⚠ Ошибка состояния. Попробуйте сначала.\nЗавершить - /cancel")
+        await state.clear()
+        return
+    if not new_text:
+        await message.answer("❗ Текст не может быть пустым. Введите новый текст:\nЗавершить - /cancel")
+        return
+    diary = load_diary(user_id)
+    if selected_idx >= len(diary):
+        await message.answer("⚠ Запись не найдена. Попробуйте сначала.\nЗавершить - /cancel")
+        await state.clear()
+        return
+    lines = diary[selected_idx].splitlines()
+    prefix_map = {
+        "➕": "➕",
+        "➖": "➖",
+        "📌": "📌"
+    }
+    prefix = prefix_map.get(edit_symbol)
+    if not prefix:
+        await message.answer("⚠ Не удалось определить, что нужно изменить.\nЗавершить - /cancel")
+        await state.clear()
+        return
+    # Заменяем строку с нужным символом
+    updated = False
+    for i, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[i] = f"{prefix} {new_text}"
+            updated = True
+            break
+    if not updated:
+        await message.answer("⚠ Не удалось найти нужный элемент для редактирования.\nЗавершить - /cancel")
+        await state.clear()
+        return
+    diary[selected_idx] = "\n".join(lines)
+    save_diary(user_id, diary)
+    await message.answer(f"✅ Запись обновлена:\n\n{diary[selected_idx]}")
+        # Предлагаем продолжить редактирование или завершить
+    buttons = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏ Продолжить редактирование", callback_data="edit_continue")],
+        [InlineKeyboardButton(text="✅ Завершить", callback_data="edit_finish")]
+    ])
+    await message.answer("Хотите отредактировать ещё что-нибудь в этой записи?", reply_markup=buttons)
+    await state.set_state(EditDiaryStates.waiting_for_continue_or_finish)
+
+#@block_during_entry
+@router.callback_query(EditDiaryStates.waiting_for_continue_or_finish, F.data.in_({"edit_continue", "edit_finish"}))
+async def process_continue_or_finish(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if callback.data == "edit_continue":
+        buttons = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Плюс", callback_data="edit_plus")],
+            [InlineKeyboardButton(text="➖ Минус", callback_data="edit_minus")],
+            [InlineKeyboardButton(text="📌 Сделать", callback_data="edit_todo")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="edit_cancel")]
+        ])
+        await callback.message.answer("Что хотите изменить?", reply_markup=buttons)
+        await state.set_state(EditDiaryStates.waiting_for_edit_choice)
+    else:
+        await callback.message.answer("✅ Редактирование завершено. Можете снова использовать /search или другие команды.", reply_markup=start_kb)
+        await state.clear()
+
+async def ask_next_point(user_id: int):
+    state = user_states.get(user_id)
+    if not state:
+        return
+    answers = state.get("answers", [])
+    step = len(answers)
+    if step >= len(QUESTIONS):
+        # Когда все вопросы пройдены — показать итоговую запись
+        preview = "\n".join(f"{QUESTIONS[i]} {answers[i]}" for i in range(len(QUESTIONS)))
+        await bot.send_message(
+            user_id,
+            f"📋 Вот ваша запись:\n\n{preview}\n\nВы хотите сохранить запись или исправить?",
+            reply_markup=fix_kb
+        )
+        return
+    # Следующий вопрос
+    question = QUESTIONS[step]
+    markup = get_example_button(str(step))  # ✅ Показываем кнопку всегда
+    await bot.send_message(user_id, question, reply_markup=markup)
+
+@router.message(Command("search"))
+#@block_during_entry
+async def cmd_search_start(message: Message, state: FSMContext):
+    await message.answer("🔎 Введите дату (например, 2025-07-24) или ключевое слово для поиска \nЗавершить - /cancel:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(EditDiaryStates.waiting_for_search_query)
 
 @router.message()
 async def catch_unexpected_text(message: Message):

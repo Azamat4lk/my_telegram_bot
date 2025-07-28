@@ -6,6 +6,7 @@ import json
 POINTS_FILE = "points.json"
 DATA_FOLDER = "user_data"
 REMINDERS_FILE = "reminders.json"
+HIDDEN_MARKER = "\u2063"  # невидимый символ
 os.makedirs(DATA_FOLDER, exist_ok=True)
 
 def get_user_data(user_id: int) -> dict:
@@ -36,7 +37,7 @@ def save_missed_entry(user_id, reason):
         time_str = "🌙 Вечер"
 
     with open(get_user_file(user_id), "a", encoding="utf-8") as f:
-        f.write(f"\n⛔ Пропуск записи ({time_str}) — {now.strftime('%Y-%m-%d %H:%M')} ({reason})\n")
+        f.write(f"\n\n{time_str} — {now.strftime('%Y-%m-%d %H:%M')}\n⛔ {HIDDEN_MARKER}Пропуск записи. Причина - {reason}\n\n")
     #reason
     
 def load_reminder_settings():
@@ -96,10 +97,10 @@ def save_entry(user_id, entry_text, point_text):
     # ✅ Создание файла при необходимости
     if not os.path.exists(filepath):
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write("📓 Мой Дневник 📓\n")
+            f.write(f"{HIDDEN_MARKER}📓 Мой Дневник 📓\n")
     # 📝 Формирование заголовка и записи
     header = f"\n\n{time_period} — {now.strftime('%Y-%m-%d %H:%M')}\n"
-    point_line = f"📍 {point_text.strip()}" if point_text.strip() else ""
+    point_line = f"📍 Пункт: {point_text.strip()}" if point_text.strip() else ""
 
     with open(filepath, "a", encoding="utf-8") as f:
         f.write(header)
@@ -114,7 +115,7 @@ def clear_user_diary_with_backup(user_id):
         shutil.move(filepath, backup_path)  # создаём бэкап
     # Создаем новый пустой файл (или с заглушкой)
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write("📓 Мой Дневник 📓\n")
+        f.write(f"{HIDDEN_MARKER}📓 Мой Дневник 📓\n")
 
 
 def delete_last_entry(user_id):

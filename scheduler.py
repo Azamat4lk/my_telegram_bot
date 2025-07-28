@@ -36,7 +36,7 @@ async def send_reminder(user_id: int, run_time_str: str, bot: Bot):
     )
 
 async def reminder_loop():
-    # print("✅ reminder_loop запущен")
+    print("🕓 Сейчас:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     while True:
         user_id, time_str = await reminder_queue.get()
         now = datetime.now()
