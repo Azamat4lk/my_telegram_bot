@@ -1,4 +1,5 @@
-aiogram
-apscheduler
-python-dotenv
-pytz
+aiogram==3.21.0
+APScheduler==3.11.0
+python-dotenv==1.1.1
+pytz==2024.2
+timezonefinder==7.0.1
