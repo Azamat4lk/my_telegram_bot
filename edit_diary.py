@@ -49,8 +49,7 @@ async def keep_entry(message: Message):
     user_states.pop(user_id)
     config.is_waiting_for_entry[user_id] = False
     await message.answer("📔 Запись сохранена. Спасибо!")
-    await message.answer("Отлично, теперь будут следующие напоминания 📌")
-    await message.answer("🔎 Введите дату (например, 2025-07-24) или ключевое слово для поиска \nЗавершить - /cancel:", reply_markup=start_kb)
+    await message.answer("Отлично, теперь будут следующие напоминания 📌", reply_markup=start_kb)
 
 @router.message(F.text == "📝 Буду записывать")
 async def record_entry(message: Message):
@@ -80,8 +79,7 @@ async def refuse(message: Message):
     pending_reminders.pop(user_id, None)
     # Можно также логировать отказ
     save_missed_entry(user_id, "отказ")
-    await message.answer("Хорошо, напоминание отменено. 📭")
-    await message.answer("🔎 Введите дату (например, 2025-07-24) или ключевое слово для поиска \nЗавершить - /cancel:", reply_markup=start_kb)
+    await message.answer("Хорошо, напоминание отменено. 📭", reply_markup=start_kb)
 
 @router.message(lambda message: config.is_waiting_for_entry.get(message.from_user.id, False))
 async def process_message(message: Message):

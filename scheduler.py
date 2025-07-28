@@ -36,31 +36,31 @@ async def send_reminder(user_id: int, run_time_str: str, bot: Bot):
     )
 
 async def reminder_loop():
+    # print("✅ reminder_loop запущен")
     while True:
+        user_id, time_str = await reminder_queue.get()
         now = datetime.now()
-        now_str = now.strftime("%H:%M")
-        for user_id, times in get_all_reminders().items():
-            if now_str in times:
-                info = pending_reminders.get(user_id)
-                # ⛔ Пропускаем, если это уже напоминание, отправленное в эту минуту
-                if info and info.get("time") == now_str:
-                    continue
-                # ❌ Если прошлое напоминание всё ещё "ждёт" — записываем как пропущенное
-                if config.is_waiting_for_entry.get(user_id, False):
-                    if info and "sent_at" in info:
-                        sent_at = info["sent_at"]
-                        if (now - sent_at).total_seconds() >= 60:
-                            save_missed_entry(user_id, info["time"])
-                            await bot.send_message(
-                                user_id,
-                                f"⚠ Пропущено напоминание {info['time']}, записано как ❌ пропуск."
-                            )
-                    # Сброс флага и памяти
-                    pending_reminders.pop(user_id, None)
-                    config.is_waiting_for_entry[user_id] = False
-                # ✅ Отправляем новое напоминание
-                await send_reminder(user_id, now_str, bot)
-        await asyncio.sleep(1)
+        info = pending_reminders.get(user_id)
+
+        # ⛔ Пропускаем, если уже было в эту минуту
+        if info and info.get("time") == time_str:
+            continue
+
+        # ❌ Проверка на пропущенное
+        if config.is_waiting_for_entry.get(user_id, False):
+            if info and "sent_at" in info:
+                sent_at = info["sent_at"]
+                if (now - sent_at).total_seconds() >= 60:
+                    save_missed_entry(user_id, info["time"])
+                    await bot.send_message(
+                        user_id,
+                        f"⚠ Пропущено напоминание {info['time']}, записано как ❌ пропуск."
+                    )
+            pending_reminders.pop(user_id, None)
+            config.is_waiting_for_entry[user_id] = False
+
+        # ✅ Отправляем новое
+        await send_reminder(user_id, time_str, bot)
 
 async def load_all_reminders():
     reminder_settings = load_reminder_settings()
