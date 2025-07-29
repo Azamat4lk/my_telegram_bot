@@ -17,26 +17,22 @@ def get_user_data(user_id: int) -> dict:
     """
     if not os.path.exists(DATA_FOLDER):
         os.makedirs(DATA_FOLDER)
-
     filepath = os.path.join(DATA_FOLDER, f"{user_id}.json")
     
     if not os.path.exists(filepath):
         return {}
-
     with open(filepath, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_missed_entry(user_id, reason):
     now = datetime.now()
     hour = now.hour
-
     if hour < 12:
         time_str = "🕗 Утро"
     elif hour < 18:
         time_str = "🕛 День"
     else:
         time_str = "🌙 Вечер"
-
     with open(get_user_file(user_id), "a", encoding="utf-8") as f:
         f.write(f"\n\n{time_str} — {now.strftime('%Y-%m-%d %H:%M')}\n⛔ {HIDDEN_MARKER}Пропуск записи. Причина - {reason}\n\n")
     #reason
@@ -143,21 +139,13 @@ def get_all_reminders():
         return json.load(f)
 
 def save_user_data(user_id: int, data: dict):
-    path = os.path.join(DATA_FOLDER, f"{user_id}.json")
-    with open(path, "w", encoding="utf-8") as f:
+    filepath = os.path.join(DATA_FOLDER, f"{user_id}.json")
+    with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def get_user_timezone(user_id: int) -> str:
-    """
-    Возвращает строку временной зоны (например, 'Asia/Tashkent') для пользователя.
-    Если не задана — возвращает значение по умолчанию.
-    """
-    if os.path.exists(TIMEZONE_FILE):
-        with open(TIMEZONE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get(str(user_id), "Asia/Tashkent")  # по умолчанию
-
-    return "Asia/Tashkent"
+    user_data = get_user_data(user_id)
+    return user_data.get("timezone", "Asia/Yekaterinburg")
 
 def set_user_timezone(user_id: int, tz: str):
     """

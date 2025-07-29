@@ -79,8 +79,14 @@ def restart_reminders_for_user(user_id: int, times: list[str]):
     # 🧹 1. Сброс состояния, чтобы старые напоминания не сработали
     pending_reminders.pop(user_id, None)
     config.is_waiting_for_entry[user_id] = False
+
     # 💾 2. Сохраняем новые настройки сразу (до запуска новых задач)
     save_reminder_settings(user_id, times)
+
+    # Получаем часовую зону пользователя
+    user_tz_name = get_user_timezone(user_id)
+    user_tz = pytz.timezone(user_tz_name)
+
     # ❌ 3. Удаляем старые задания из планировщика
     old_jobs = user_jobs.get(user_id, [])
     for job in old_jobs:
@@ -89,13 +95,14 @@ def restart_reminders_for_user(user_id: int, times: list[str]):
         except Exception as e:
             logging.warning(f"Не удалось удалить задачу {job.id}: {e}")
     user_jobs[user_id] = []
-    # ⏰ 4. Добавляем новые задания
+
+    # ⏰ 4. Добавляем новые задания с учётом временной зоны пользователя
     new_jobs = []
     for t in times:
         hour, minute = map(int, t.split(":"))
         job = scheduler.add_job(
             lambda uid=user_id, time_str=t: reminder_queue.put_nowait((uid, time_str)),
-            CronTrigger(hour=hour, minute=minute),
+            CronTrigger(hour=hour, minute=minute, timezone=user_tz),
             id=f"{user_id}_{t}",
             misfire_grace_time=60
         )

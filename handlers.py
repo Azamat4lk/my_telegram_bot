@@ -30,11 +30,11 @@ router = Router()
 user_indexes = {} 
 tf = TimezoneFinder()
 
-##Отправить стикеры в боте и скопировать ссылку
-from aiogram.enums import ContentType
-@router.message(F.content_type == ContentType.STICKER)
-async def get_sticker_id(message: Message):
-    await message.answer(f"📦 Вот file_id стикера:\n\n<code>{message.sticker.file_id}</code>", parse_mode="HTML")
+# ##Отправить стикеры в боте и скопировать ссылку
+# from aiogram.enums import ContentType
+# @router.message(F.content_type == ContentType.STICKER)
+# async def get_sticker_id(message: Message):
+#     await message.answer(f"📦 Вот file_id стикера:\n\n<code>{message.sticker.file_id}</code>", parse_mode="HTML")
 
 QUESTIONS = [
     "➕ Что за неделю было хорошего?",
@@ -363,9 +363,7 @@ async def skip_location(message: Message):
     user_id = message.from_user.id
     user_data = get_user_data(user_id)
     user_data["timezone"] = "Asia/Yekaterinburg"
-    if not user_data.get("timezone_selected"):
-        user_data["timezone"] = True
-        await message.answer("⚠ Пожалуйста, завновонапишите /start для начала.")  # по умолчанию
+    user_data["timezone_selected"] = True
     save_user_data(user_id, user_data)
     await message.answer(
         "✅ Используем серверное время (Екатеринбург, UTC+5).",
@@ -380,9 +378,6 @@ async def handle_location(message: Message):
         return
     latitude = location.latitude
     longitude = location.longitude
-    from timezonefinder import TimezoneFinder
-    import pytz
-    from datetime import datetime
     tf = TimezoneFinder()
     tz_name = tf.timezone_at(lat=latitude, lng=longitude)
     if tz_name is None:
@@ -393,11 +388,12 @@ async def handle_location(message: Message):
     user_id = message.from_user.id
     user_data = get_user_data(user_id)
     user_data["timezone"] = tz_name
-    if not user_data.get("timezone_selected"):
-        user_data["timezone"] = "Asia/Yekaterinburg"
-        await message.answer("⚠ Пожалуйста, завновонапишите /start для начала.")
+    user_data["timezone_selected"] = True
     save_user_data(user_id, user_data)
-    await message.answer_sticker("CAACAgIAAxkBAAIiO2iHqvS4k_W6khAOhhWbgiL-HHS1AAL-AANWnb0K2gRhMC751_82BA")
+    reminder_settings = load_reminder_settings()
+    times = reminder_settings.get(str(user_id), []) # загружаем список времени
+    restart_reminders_for_user(user_id, times)
+    await message.answer_sticker("CAACAgIAAxkBAAIj92iIpbtBIiR4A8UAAZNS9ZLG9AABr8AAAkkCAAJWnb0KKpcMnQhTIQ42BA")
     await message.answer(
         f"✅ Часовой пояс сохранён: *{tz_name}*\n"
         f"🕒 Местное время: *{local_time}*\n\n"
