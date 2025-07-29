@@ -16,5 +16,5 @@ if not TOKEN:
 
 bot = Bot(
     token=TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)  # ✅ новый способ
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)  # ✅ новый способ решения
 )
